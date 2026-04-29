@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ciphertax"
 version = "0.1.0"
-description = "Privacy-preserving tax assistant — redacts PII locally before sending to AI"
+description = "Safely use AI for tax filing — redacts PII locally so your personal data never leaves your machine"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"

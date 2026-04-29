@@ -1,6 +1,6 @@
 # 🔐 CipherTax
 
-**Use AI for tax filing without exposing your personal data.**
+**Safely use AI for tax filing — your personal data never leaves your machine.**
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
