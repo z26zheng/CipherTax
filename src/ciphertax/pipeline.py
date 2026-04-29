@@ -16,7 +16,7 @@ from pathlib import Path
 
 from ciphertax.ai.claude_client import ClaudeClient, TaskType
 from ciphertax.detection.detector import PIIDetector, PIIEntity
-from ciphertax.extraction import extract_text_from_pdf
+from ciphertax.extraction import extract_text_from_file
 from ciphertax.redaction.rehydrator import Rehydrator
 from ciphertax.redaction.tokenizer import Tokenizer
 from ciphertax.vault.secure_vault import SecureVault
@@ -132,7 +132,7 @@ class CipherTaxPipeline:
 
         # Step 1: Extract text from PDF
         logger.info("Step 1/5: Extracting text from %s", pdf_path.name)
-        pages = extract_text_from_pdf(pdf_path, force_ocr=force_ocr)
+        pages = extract_text_from_file(pdf_path, force_ocr=force_ocr)
         full_text = "\n\n".join(f"--- Page {p['page']} ---\n{p['text']}" for p in pages)
         extraction_methods = list(set(p["method"] for p in pages))
 

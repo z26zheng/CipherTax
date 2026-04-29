@@ -1,4 +1,4 @@
-"""Unified PDF text extraction — auto-detects digital vs scanned PDFs."""
+"""Unified text extraction — auto-detects digital PDFs, scanned PDFs, and images."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ciphertax.extraction.pdf_extractor import extract_text_digital
 from ciphertax.extraction.ocr_extractor import extract_text_ocr_from_pdf, is_tesseract_available
+from ciphertax.extraction.image_extractor import extract_text_from_image, is_image_file
 
 logger = logging.getLogger(__name__)
 
@@ -104,3 +105,37 @@ def extract_text_from_pdf(
     )
 
     return results
+
+
+def extract_text_from_file(
+    file_path: str | Path,
+    force_ocr: bool = False,
+    ocr_lang: str = "eng",
+) -> list[dict]:
+    """Extract text from any supported file (PDF or image).
+
+    Auto-detects file type and routes to the appropriate extractor.
+
+    Args:
+        file_path: Path to a PDF or image file.
+        force_ocr: If True, force OCR even for digital PDFs.
+        ocr_lang: Tesseract language code.
+
+    Returns:
+        List of dicts, one per page/image:
+        [{"page": 1, "text": "...", "method": "digital"|"ocr"}, ...]
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    if is_image_file(file_path):
+        logger.info("Detected image file: %s", file_path.name)
+        return extract_text_from_image(file_path, lang=ocr_lang)
+    elif file_path.suffix.lower() == ".pdf":
+        return extract_text_from_pdf(file_path, force_ocr=force_ocr, ocr_lang=ocr_lang)
+    else:
+        raise ValueError(
+            f"Unsupported file type: {file_path.suffix}. "
+            f"Supported: .pdf, .png, .jpg, .jpeg, .tiff, .tif, .bmp, .webp"
+        )

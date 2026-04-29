@@ -39,3 +39,5 @@ htmlcov/
 # Tesseract / OCR temp files
 *.tiff
 *.tif
+tests/fixtures/mock_*
+tests/fixtures/_temp_*
