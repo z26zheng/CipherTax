@@ -11,8 +11,9 @@ import re
 
 logger = logging.getLogger(__name__)
 
-# Pattern to match tokens like [SSN_1], [PERSON_2], [ADDRESS_1], etc.
-TOKEN_PATTERN = re.compile(r"\[[A-Z_]+_\d+\]")
+# Pattern to match tokens like [CT_a3f9_SSN_1], [CT_test_PERSON_2], etc.
+# Prefix can be any alphanumeric string. Also matches legacy [SSN_1] format.
+TOKEN_PATTERN = re.compile(r"\[(?:CT_[a-zA-Z0-9]+_)?[A-Z_]+_\d+\]")
 
 
 class Rehydrator:

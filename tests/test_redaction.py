@@ -1,10 +1,29 @@
 """Tests for tokenizer and rehydrator."""
 
 import pytest
+import re
 
 from ciphertax.redaction.tokenizer import Tokenizer
 from ciphertax.redaction.rehydrator import Rehydrator
 from ciphertax.detection.detector import PIIEntity
+
+
+# Token pattern matching new format: [CT_<prefix>_TYPE_N]
+TOKEN_RE = re.compile(r"\[CT_[a-zA-Z0-9]+_([A-Z_]+)_(\d+)\]")
+
+
+def find_token(text: str, type_label: str, idx: int) -> str | None:
+    """Find a token of the given type and index in text. Returns the actual
+    token string (with session prefix) or None if not found."""
+    for match in TOKEN_RE.finditer(text):
+        if match.group(1) == type_label and int(match.group(2)) == idx:
+            return match.group(0)
+    return None
+
+
+def has_token_type(text: str, type_label: str) -> bool:
+    """Check if any token of the given type exists in text."""
+    return any(m.group(1) == type_label for m in TOKEN_RE.finditer(text))
 
 
 class TestTokenizer:
@@ -12,7 +31,8 @@ class TestTokenizer:
 
     @pytest.fixture
     def tokenizer(self):
-        return Tokenizer()
+        # Use fixed prefix for predictable testing
+        return Tokenizer(session_prefix="test")
 
     def _make_entity(self, entity_type, text, start, end, score=0.9, should_redact=True):
         return PIIEntity(
@@ -29,8 +49,8 @@ class TestTokenizer:
         entities = [self._make_entity("US_SSN", "123-45-6789", 7, 18)]
         redacted, mapping = tokenizer.redact(text, entities)
         assert "123-45-6789" not in redacted
-        assert "[SSN_1]" in redacted
-        assert mapping["[SSN_1]"] == "123-45-6789"
+        assert "[CT_test_SSN_1]" in redacted
+        assert mapping["[CT_test_SSN_1]"] == "123-45-6789"
 
     def test_redact_multiple_entities(self, tokenizer):
         text = "John Smith SSN 123-45-6789"
@@ -41,8 +61,8 @@ class TestTokenizer:
         redacted, mapping = tokenizer.redact(text, entities)
         assert "John Smith" not in redacted
         assert "123-45-6789" not in redacted
-        assert "[PERSON_1]" in redacted
-        assert "[SSN_1]" in redacted
+        assert has_token_type(redacted, "PERSON")
+        assert has_token_type(redacted, "SSN")
 
     def test_consistent_mapping(self, tokenizer):
         """Same PII text should always map to the same token."""
@@ -54,9 +74,8 @@ class TestTokenizer:
         redacted1, _ = tokenizer.redact(text1, e1)
         redacted2, _ = tokenizer.redact(text2, e2)
 
-        # Both should use the same token
-        assert "[PERSON_1]" in redacted1
-        assert "[PERSON_1]" in redacted2
+        assert "[CT_test_PERSON_1]" in redacted1
+        assert "[CT_test_PERSON_1]" in redacted2
 
     def test_different_values_get_different_tokens(self, tokenizer):
         text = "John Smith and Jane Doe"
@@ -65,9 +84,9 @@ class TestTokenizer:
             self._make_entity("PERSON", "Jane Doe", 15, 23),
         ]
         redacted, mapping = tokenizer.redact(text, entities)
-        assert "[PERSON_1]" in redacted
-        assert "[PERSON_2]" in redacted
-        # Both values should be in the mapping (order depends on processing direction)
+        # Both PERSON tokens (1 and 2) should be present
+        assert "[CT_test_PERSON_1]" in redacted
+        assert "[CT_test_PERSON_2]" in redacted
         assert set(mapping.values()) == {"John Smith", "Jane Doe"}
         assert "John Smith" not in redacted
         assert "Jane Doe" not in redacted
@@ -76,7 +95,7 @@ class TestTokenizer:
         text = "Amount: $75,000"
         entities = [self._make_entity("AMOUNT", "$75,000", 8, 15, should_redact=False)]
         redacted, mapping = tokenizer.redact(text, entities)
-        assert redacted == text  # Nothing should be redacted
+        assert redacted == text
         assert mapping == {}
 
     def test_empty_entities(self, tokenizer):
@@ -90,8 +109,8 @@ class TestTokenizer:
         entities = [self._make_entity("US_SSN", "123-45-6789", 5, 16)]
         tokenizer.redact(text, entities)
         full_mapping = tokenizer.get_full_mapping()
-        assert "[SSN_1]" in full_mapping
-        assert full_mapping["[SSN_1]"] == "123-45-6789"
+        assert "[CT_test_SSN_1]" in full_mapping
+        assert full_mapping["[CT_test_SSN_1]"] == "123-45-6789"
 
     def test_reset(self, tokenizer):
         text = "SSN: 123-45-6789"
@@ -104,62 +123,86 @@ class TestTokenizer:
         text = "Email: test@example.com"
         entities = [self._make_entity("EMAIL_ADDRESS", "test@example.com", 7, 23)]
         redacted, mapping = tokenizer.redact(text, entities)
-        assert "[EMAIL_1]" in redacted
+        assert "[CT_test_EMAIL_1]" in redacted
+
+    def test_session_prefix_random(self):
+        """Different tokenizer instances should get different prefixes."""
+        t1 = Tokenizer()
+        t2 = Tokenizer()
+        assert t1.session_prefix != t2.session_prefix
+
+    def test_collision_escape(self):
+        """Pre-existing tokens in input should be escaped."""
+        tokenizer = Tokenizer(session_prefix="abcd")
+        # Input contains a token-like pattern matching our prefix
+        text = "Document contains [CT_abcd_SSN_1] which should not be substituted"
+        entities = []
+        redacted, _ = tokenizer.redact(text, entities)
+        # The collision should be escaped (e.g., to [~CT_abcd_SSN_1])
+        assert "[CT_abcd_SSN_1]" not in redacted
+        assert "[~CT_abcd_SSN_1]" in redacted
 
 
 class TestRehydrator:
     """Test token rehydration (restoring PII)."""
 
     def test_rehydrate_single_token(self):
-        mapping = {"[SSN_1]": "123-45-6789"}
+        mapping = {"[CT_test_SSN_1]": "123-45-6789"}
         rehydrator = Rehydrator(mapping)
-        text = "Your SSN is [SSN_1]"
+        text = "Your SSN is [CT_test_SSN_1]"
         result = rehydrator.rehydrate(text)
         assert result == "Your SSN is 123-45-6789"
 
     def test_rehydrate_multiple_tokens(self):
         mapping = {
-            "[SSN_1]": "123-45-6789",
-            "[PERSON_1]": "John Smith",
-            "[EIN_1]": "98-7654321",
+            "[CT_test_SSN_1]": "123-45-6789",
+            "[CT_test_PERSON_1]": "John Smith",
+            "[CT_test_EIN_1]": "98-7654321",
         }
         rehydrator = Rehydrator(mapping)
-        text = "[PERSON_1] with SSN [SSN_1] works at employer EIN [EIN_1]"
+        text = "[CT_test_PERSON_1] with SSN [CT_test_SSN_1] works at employer EIN [CT_test_EIN_1]"
         result = rehydrator.rehydrate(text)
         assert "John Smith" in result
         assert "123-45-6789" in result
         assert "98-7654321" in result
 
     def test_rehydrate_preserves_non_token_text(self):
-        mapping = {"[SSN_1]": "123-45-6789"}
+        mapping = {"[CT_test_SSN_1]": "123-45-6789"}
         rehydrator = Rehydrator(mapping)
-        text = "Wages: $75,000. SSN: [SSN_1]. Tax: $12,500."
+        text = "Wages: $75,000. SSN: [CT_test_SSN_1]. Tax: $12,500."
         result = rehydrator.rehydrate(text)
         assert "$75,000" in result
         assert "$12,500" in result
         assert "123-45-6789" in result
 
     def test_rehydrate_empty_text(self):
-        rehydrator = Rehydrator({"[SSN_1]": "123-45-6789"})
+        rehydrator = Rehydrator({"[CT_test_SSN_1]": "123-45-6789"})
         assert rehydrator.rehydrate("") == ""
         assert rehydrator.rehydrate(None) is None
 
     def test_find_tokens(self):
+        rehydrator = Rehydrator({})
+        tokens = rehydrator.find_tokens("Hello [CT_test_PERSON_1], your SSN is [CT_test_SSN_1]")
+        assert "[CT_test_PERSON_1]" in tokens
+        assert "[CT_test_SSN_1]" in tokens
+
+    def test_find_legacy_tokens(self):
+        """Backward compat: should also match legacy [SSN_1] format."""
         rehydrator = Rehydrator({})
         tokens = rehydrator.find_tokens("Hello [PERSON_1], your SSN is [SSN_1]")
         assert "[PERSON_1]" in tokens
         assert "[SSN_1]" in tokens
 
     def test_validate_mapping(self):
-        mapping = {"[SSN_1]": "123-45-6789"}
+        mapping = {"[CT_test_SSN_1]": "123-45-6789"}
         rehydrator = Rehydrator(mapping)
-        validation = rehydrator.validate_mapping("[SSN_1] and [PERSON_1]")
-        assert validation["[SSN_1]"] is True
-        assert validation["[PERSON_1]"] is False
+        validation = rehydrator.validate_mapping("[CT_test_SSN_1] and [CT_test_PERSON_1]")
+        assert validation["[CT_test_SSN_1]"] is True
+        assert validation["[CT_test_PERSON_1]"] is False
 
     def test_roundtrip_tokenize_rehydrate(self):
         """Tokenize then rehydrate should restore original text."""
-        tokenizer = Tokenizer()
+        tokenizer = Tokenizer(session_prefix="rt")
         original = "John Smith SSN 123-45-6789 email john@example.com"
         entities = [
             PIIEntity("PERSON", "John Smith", 0, 10, 0.9, True),

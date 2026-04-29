@@ -1,14 +1,17 @@
 """Tokenizer — replaces PII with deterministic placeholder tokens.
 
 Implements tax-smart redaction:
-- Identity PII (SSN, names, etc.) → replaced with tokens like [SSN_1], [PERSON_1]
+- Identity PII (SSN, names, etc.) → replaced with tokens like [CT_a3f9_SSN_1]
 - Financial data (income, amounts) → kept as-is for AI tax calculations
 - Same PII value always maps to the same token within a session
+- Each session uses a random prefix (e.g., "a3f9") to prevent token collision
+  with literal text that might exist in input documents.
 """
 
 from __future__ import annotations
 
 import logging
+import secrets
 from collections import defaultdict
 
 from ciphertax.detection.detector import PIIEntity
@@ -28,8 +31,17 @@ class Tokenizer:
         # mapping = {"[SSN_1]": "123-45-6789", "[PERSON_1]": "John Smith", ...}
     """
 
-    def __init__(self):
-        """Initialize the tokenizer with empty mappings."""
+    def __init__(self, session_prefix: str | None = None):
+        """Initialize the tokenizer with empty mappings.
+
+        Args:
+            session_prefix: Optional random prefix to prevent token collision
+                with literal text in input documents. Auto-generated if None.
+        """
+        # Random prefix per session to prevent collision with input text
+        # e.g., "[CT_a3f9_SSN_1]" instead of "[SSN_1]"
+        self._session_prefix = session_prefix or secrets.token_hex(2)
+
         # Maps entity_type → counter (for generating unique tokens)
         self._counters: dict[str, int] = defaultdict(int)
 
@@ -38,6 +50,11 @@ class Tokenizer:
 
         # Maps token → original PII text (for rehydration)
         self._token_to_text: dict[str, str] = {}
+
+    @property
+    def session_prefix(self) -> str:
+        """Return the session-specific token prefix."""
+        return self._session_prefix
 
     def redact(self, text: str, entities: list[PIIEntity]) -> tuple[str, dict[str, str]]:
         """Replace PII entities in text with placeholder tokens.
@@ -51,9 +68,15 @@ class Tokenizer:
             token_mapping maps token → original PII text.
         """
         if not entities:
-            return text, {}
+            return self._escape_collisions(text), {}
+
+        # Pre-escape any pre-existing token-like patterns in input
+        # to prevent attacker-crafted documents from injecting fake tokens
+        text = self._escape_collisions(text)
 
         # Process entities from right to left to preserve positions
+        # Note: entity positions reference the ORIGINAL text, but we've now
+        # escaped collisions. We re-detect positions by searching.
         entities_to_redact = [e for e in entities if e.should_redact]
         entities_to_redact.sort(key=lambda e: e.start, reverse=True)
 
@@ -91,15 +114,31 @@ class Tokenizer:
         if normalized in self._text_to_token:
             return self._text_to_token[normalized]
 
-        # Create a new token
+        # Create a new token with session-specific prefix to prevent collision
+        # with literal text that might exist in input documents
         entity_label = self._normalize_entity_type(entity.entity_type)
         self._counters[entity_label] += 1
-        token = f"[{entity_label}_{self._counters[entity_label]}]"
+        token = f"[CT_{self._session_prefix}_{entity_label}_{self._counters[entity_label]}]"
 
         self._text_to_token[normalized] = token
         self._token_to_text[token] = normalized
 
         return token
+
+    def _escape_collisions(self, text: str) -> str:
+        """Escape any pre-existing token-like patterns in input text.
+
+        Prevents attacker-crafted documents from containing fake tokens
+        that would later be substituted with real PII during rehydration.
+
+        Replaces `[CT_<prefix>_...]` patterns with `[~CT_<prefix>_...]`
+        if they happen to match this session's prefix.
+        """
+        import re
+
+        # Only escape patterns matching THIS session's prefix
+        pattern = re.compile(rf"\[CT_{re.escape(self._session_prefix)}_[A-Z_]+_\d+\]")
+        return pattern.sub(lambda m: "[~" + m.group()[1:], text)
 
     @staticmethod
     def _normalize_entity_type(entity_type: str) -> str:

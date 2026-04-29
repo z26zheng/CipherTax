@@ -12,6 +12,11 @@ from presidio_analyzer import Pattern, PatternRecognizer
 def create_ssn_recognizer() -> PatternRecognizer:
     """Social Security Number (SSN) — format: XXX-XX-XXXX or XXXXXXXXX.
 
+    Detects ANY 9-digit number in SSN format, including invalid SSNs
+    (000/666/9XX area, 00 group, 0000 serial). We DETECT first, then
+    optionally validate. This prevents leaking SSN-formatted numbers
+    that happen to match invalid groupings (e.g., 123-00-4567).
+
     Supplements Presidio's built-in US_SSN recognizer for better coverage
     in tax document contexts.
     """
@@ -19,14 +24,19 @@ def create_ssn_recognizer() -> PatternRecognizer:
         supported_entity="US_SSN",
         name="Tax SSN Recognizer",
         patterns=[
+            # Detect ALL SSN-formatted strings — we redact first, validate never.
+            # Invalid SSN groupings (000-XX-XXXX, XXX-00-XXXX, XXX-XX-0000) are
+            # still PII-shaped data that should NEVER leak to AI.
             Pattern(
                 name="ssn_with_dashes",
-                regex=r"\b(?!000|666|9\d{2})\d{3}-(?!00)\d{2}-(?!0{4})\d{4}\b",
+                regex=r"\b\d{3}-\d{2}-\d{4}\b",
                 score=0.7,
             ),
+            # 9-digit SSN without dashes — lower score because it could be
+            # other 9-digit numbers; relies on context boost.
             Pattern(
                 name="ssn_no_dashes",
-                regex=r"\b(?!000|666|9\d{2})\d{3}(?!00)\d{2}(?!0{4})\d{4}\b",
+                regex=r"\b\d{9}\b",
                 score=0.3,
             ),
         ],
@@ -37,6 +47,7 @@ def create_ssn_recognizer() -> PatternRecognizer:
             "taxpayer id",
             "taxpayer identification",
             "employee's social security number",
+            "tin",
         ],
         supported_language="en",
     )

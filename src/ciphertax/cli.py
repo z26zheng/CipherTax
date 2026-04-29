@@ -53,14 +53,34 @@ def main():
     help="AI task to perform on the document.",
 )
 @click.option("--query", "-q", type=str, default=None, help="Specific question to ask (for advise task).")
-@click.option("--password", "-p", type=str, default=None, help="Vault encryption password.")
+@click.option(
+    "--persist-vault",
+    is_flag=True,
+    default=False,
+    help="Encrypt PII mappings to disk for re-use across sessions. "
+         "Requires entering a password interactively.",
+)
 @click.option("--ocr", is_flag=True, default=False, help="Force OCR for all pages.")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Save output to file.")
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(),
+    default=None,
+    help="Save sanitized output to file (does NOT include PII mappings unless --include-secrets is set).",
+)
+@click.option(
+    "--include-secrets",
+    is_flag=True,
+    default=False,
+    help="DANGEROUS: include the PII↔token mapping in the output file. "
+         "Only use if you understand the risk.",
+)
 @click.option("--verbose", "-v", is_flag=True, default=False, help="Enable verbose logging.")
-def process(pdf_files, task, query, password, ocr, output, verbose):
+def process(pdf_files, task, query, persist_vault, ocr, output, include_secrets, verbose):
     """Process tax PDF(s) through the privacy-preserving pipeline.
 
     Extracts text, redacts PII, sends to Claude, and rehydrates the response.
+    By default, PII mappings are kept in memory only (cleared after process exits).
 
     Examples:
 
@@ -68,7 +88,7 @@ def process(pdf_files, task, query, password, ocr, output, verbose):
 
         ciphertax process w2.pdf --task advise -q "Am I eligible for EITC?"
 
-        ciphertax process w2.pdf 1099-int.pdf --task file
+        ciphertax process w2.pdf 1099-int.pdf --task file --persist-vault
     """
     setup_logging(verbose)
 
@@ -80,19 +100,34 @@ def process(pdf_files, task, query, password, ocr, output, verbose):
     click.echo("=" * 50)
     click.echo()
 
+    # Get vault password securely (only if persisting)
+    vault_password = None
+    if persist_vault:
+        vault_password = click.prompt(
+            "🔑 Enter vault password (input hidden)",
+            hide_input=True,
+            confirmation_prompt=True,
+        )
+
     # Initialize pipeline
     click.echo("⚙️  Initializing pipeline...")
     try:
-        pipeline = CipherTaxPipeline(vault_password=password)
+        pipeline = CipherTaxPipeline(
+            vault_password=vault_password,
+            persist_vault=persist_vault,
+        )
     except Exception as e:
         click.echo(f"❌ Failed to initialize pipeline: {e}", err=True)
         sys.exit(1)
 
-    click.echo(f"🔑 Vault password: {pipeline.vault_password}")
-    click.echo(f"📁 Vault location: {pipeline.vault_path}")
+    if persist_vault:
+        click.echo(f"🔐 Vault will be persisted (password not displayed)")
+    else:
+        click.echo(f"🔓 Mappings kept in memory only (no disk vault)")
     click.echo()
 
     # Process each PDF
+    results = []
     for pdf_file in pdf_files:
         click.echo(f"📄 Processing: {pdf_file}")
         click.echo("-" * 40)
@@ -104,6 +139,7 @@ def process(pdf_files, task, query, password, ocr, output, verbose):
                 query=query,
                 force_ocr=ocr,
             )
+            results.append(result)
 
             # Display results
             click.echo(f"  📝 Pages extracted: {result.pages_extracted}")
@@ -112,10 +148,22 @@ def process(pdf_files, task, query, password, ocr, output, verbose):
             click.echo(f"  📊 Entity types: {', '.join(result.entity_types)}")
             click.echo()
 
-            if result.redacted_text:
+            # Handle PII leak
+            if result.pii_leak_blocked:
+                click.echo(
+                    "  ❌ PII LEAK BLOCKED — API call was prevented because un-redacted "
+                    "PII was detected. Redacted text and mappings withheld for safety.",
+                    err=True,
+                )
+                for error in result.errors:
+                    click.echo(f"     {error}", err=True)
+                click.echo()
+                continue
+
+            # Show redacted text only if no leak occurred
+            if result.redacted_text and not result.pii_leak_blocked:
                 click.echo("📤 Redacted text (sent to AI):")
                 click.echo("-" * 40)
-                # Show first 500 chars of redacted text
                 preview = result.redacted_text[:500]
                 if len(result.redacted_text) > 500:
                     preview += f"\n... ({len(result.redacted_text) - 500} more chars)"
@@ -127,13 +175,8 @@ def process(pdf_files, task, query, password, ocr, output, verbose):
                 click.echo("-" * 40)
                 click.echo(result.ai_response_rehydrated)
                 click.echo()
-            elif result.ai_response:
-                click.echo("📥 AI Response (tokenized):")
-                click.echo("-" * 40)
-                click.echo(result.ai_response)
-                click.echo()
 
-            if result.errors:
+            if result.errors and not result.pii_leak_blocked:
                 click.echo("⚠️  Errors:")
                 for error in result.errors:
                     click.echo(f"  - {error}")
@@ -143,30 +186,48 @@ def process(pdf_files, task, query, password, ocr, output, verbose):
             click.echo(f"❌ Error processing {pdf_file}: {e}", err=True)
             if verbose:
                 import traceback
-
                 traceback.print_exc()
 
     # Save output if requested
-    if output:
+    if output and results:
         output_data = {
-            "vault_path": str(pipeline.vault_path),
             "results": [
                 {
                     "source": r.source_file,
-                    "redacted_text": r.redacted_text,
+                    "pages_extracted": r.pages_extracted,
+                    "pii_entities_found": r.pii_entities_found,
+                    "pii_entities_redacted": r.pii_entities_redacted,
+                    "entity_types": r.entity_types,
+                    # Note: redacted_text contains tokens, not PII — safe to save
+                    "redacted_text": r.redacted_text if not r.pii_leak_blocked else None,
                     "ai_response": r.ai_response,
-                    "ai_response_rehydrated": r.ai_response_rehydrated,
-                    "token_mapping": r.token_mapping,
+                    "ai_response_rehydrated": (
+                        r.ai_response_rehydrated if include_secrets else "[CONTAINS_PII — use --include-secrets to include]"
+                    ),
+                    "pii_leak_blocked": r.pii_leak_blocked,
+                    "errors": r.errors,
                 }
-                for r in [result]
+                for r in results
             ],
         }
+        # Only include token_mapping if explicitly requested
+        if include_secrets:
+            click.echo(
+                "⚠️  WARNING: --include-secrets is enabled. The output file will contain "
+                "REAL PII (SSNs, names, etc.). Treat this file as sensitive!",
+                err=True,
+            )
+            for i, r in enumerate(results):
+                output_data["results"][i]["token_mapping"] = r.token_mapping
+                output_data["results"][i]["original_text"] = r.original_text
+
         Path(output).write_text(json.dumps(output_data, indent=2))
         click.echo(f"💾 Output saved to: {output}")
 
     click.echo()
     click.echo("✅ Processing complete!")
-    click.echo(f"🔑 Remember your vault password to access PII mappings later.")
+    if not persist_vault:
+        click.echo("🔓 In-memory mappings will be cleared on process exit.")
 
 
 @main.command()
@@ -177,6 +238,7 @@ def inspect(pdf_files, ocr, verbose):
     """Inspect a tax PDF — show extracted text and detected PII without sending to AI.
 
     This is a dry-run mode that shows what PII would be redacted.
+    No vault is created on disk.
 
     Examples:
 
@@ -191,9 +253,11 @@ def inspect(pdf_files, ocr, verbose):
     click.echo("🔍 CipherTax — Document Inspector (Dry Run)")
     click.echo("=" * 50)
     click.echo("⚠️  No data will be sent to AI in this mode.")
+    click.echo("🔓 No vault will be created — mappings are in-memory only.")
     click.echo()
 
-    pipeline = CipherTaxPipeline()
+    # Inspect mode — no vault, no AI
+    pipeline = CipherTaxPipeline(persist_vault=False)
 
     for pdf_file in pdf_files:
         click.echo(f"📄 Inspecting: {pdf_file}")
@@ -212,7 +276,7 @@ def inspect(pdf_files, ocr, verbose):
         click.echo()
 
         if result.token_mapping:
-            click.echo("  Token Mapping (what would be redacted):")
+            click.echo("  Token Mapping (what would be redacted — values masked):")
             for token, original in result.token_mapping.items():
                 masked = original[:3] + "***" if len(original) > 3 else "***"
                 click.echo(f"    {token} ← {masked}")
@@ -279,7 +343,6 @@ def vault_clean(vault_dir, force):
     import os
 
     for f in vault_files:
-        # Overwrite with random data before deletion
         size = f.stat().st_size
         f.write_bytes(os.urandom(size))
         f.unlink()

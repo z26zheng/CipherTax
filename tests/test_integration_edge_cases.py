@@ -49,9 +49,9 @@ class TestEdgeCaseDuplicatePII:
     def test_same_ssn_same_token(self, pipeline, dense_pii_pdf):
         """Same SSN appearing multiple times should get the same token."""
         result = pipeline.process(dense_pii_pdf, skip_ai=True)
-        # Count how many unique SSN tokens were created
-        ssn_tokens = [k for k in result.token_mapping if "[SSN_" in k]
-        ssn_values = [v for k, v in result.token_mapping.items() if "[SSN_" in k]
+        # Count how many unique SSN tokens were created (new format: [CT_<prefix>_SSN_N])
+        ssn_tokens = [k for k in result.token_mapping if "_SSN_" in k]
+        ssn_values = [v for k, v in result.token_mapping.items() if "_SSN_" in k]
         # Each unique SSN value should have exactly one token
         assert len(ssn_values) == len(set(ssn_values)), "Duplicate tokens for same SSN"
 

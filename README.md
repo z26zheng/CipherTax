@@ -5,7 +5,7 @@
 [![PyPI](https://img.shields.io/pypi/v/ciphertax.svg)](https://pypi.org/project/ciphertax/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
-[![Tests](https://img.shields.io/badge/tests-152%20passing-brightgreen.svg)](#tests)
+[![Tests](https://img.shields.io/badge/tests-159%20passing-brightgreen.svg)](#tests)
 
 📦 **Install:** `pip install ciphertax` — [View on PyPI](https://pypi.org/project/ciphertax/0.1.0/)
 
@@ -32,7 +32,7 @@ CipherTax is a **local-first privacy layer** that sits between your tax document
 1. **Extracts** text from your tax PDFs and photos (digital + scanned/OCR)
 2. **Detects** all personally identifiable information using [Microsoft Presidio](https://github.com/microsoft/presidio) + custom tax recognizers
 3. **Replaces** identity data with tokens (`John Smith` → `[PERSON_1]`, `123-45-6789` → `[SSN_1]`) while **keeping financial amounts** the AI needs
-4. **Stores** the real values in a locally encrypted vault (AES-256, never uploaded)
+4. **Stores** the real values in a locally encrypted vault (Fernet/AES-128-CBC + HMAC-SHA256, never uploaded)
 5. **Sends** only the sanitized text to Claude
 6. **Restores** real PII in the AI's response locally
 
@@ -140,13 +140,14 @@ CipherTax uses **multiple layers of defense** to prevent PII leakage:
 - Each processing session gets its own vault file
 - **Secure deletion**: vault files are overwritten with random data before deletion
 
-### Layer 4: Pre-Send Safety Check
-- Last-resort regex scan for SSN patterns (`XXX-XX-XXXX`) in the text about to be sent
-- If any SSN is detected in the "redacted" text, **the API call is blocked** with an error
-- This catches edge cases where detection might have missed something
+### Layer 4: Pre-Send Safety Check (Defense in Depth)
+- Before any data is sent to AI, the **full PII detector re-runs** on the about-to-be-sent text
+- If ANY redactable PII (SSN, EIN, name, email, phone, address, bank account, etc.) is detected, the API call is **blocked** with a `PIILeakError`
+- The leaked text is **never logged or displayed** — to avoid amplifying the leak
+- Tokens with random session prefixes (e.g., `[CT_a3f9_SSN_1]`) prevent collision with literal text in input documents
 
 ### Layer 5: Comprehensive Test Suite
-- **152 tests** including dedicated PII leak prevention tests
+- **159 tests** including dedicated PII leak prevention tests
 - Tests process mock W-2s, 1099s, multi-page documents, and dense PII documents
 - Each test verifies that **no known PII value appears in the redacted output**
 - Mocked Claude API tests capture the exact payload and assert zero PII

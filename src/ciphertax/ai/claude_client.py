@@ -19,6 +19,15 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
+class PIILeakError(Exception):
+    """Raised when PII is detected in text that's about to be sent to AI.
+
+    This is a fatal error — the API call must NOT proceed. Callers should
+    NOT log or display the offending text, as it contains the leaked PII.
+    """
+    pass
+
+
 class TaskType(str, Enum):
     """Types of tax-related tasks the AI can perform."""
 
@@ -150,14 +159,15 @@ class ClaudeClient:
         if query:
             user_message += f"\n\nSpecific question: {query}"
 
+        # Verify no PII leakage BEFORE the API call.
+        # Raises PIILeakError if any redactable PII remains in the text.
+        self._safety_check(redacted_text)
+
         logger.info(
             "Sending redacted text to Claude (%d chars, task=%s)",
             len(redacted_text),
             task.value,
         )
-
-        # Verify no obvious PII leakage before sending
-        self._safety_check(redacted_text)
 
         response = self._client.messages.create(
             model=self.model,
@@ -206,35 +216,50 @@ class ClaudeClient:
 
     @staticmethod
     def _safety_check(text: str) -> None:
-        """Basic safety check to catch obvious PII that wasn't redacted.
+        """Comprehensive safety check — re-runs full PII detection on
+        text about to be sent to AI.
 
-        This is a last-resort check — the detection layer should catch everything,
-        but this provides an additional safety net.
+        This is a defense-in-depth check that catches any PII that escaped
+        the primary tokenization layer. It runs the SAME detector used during
+        initial redaction, so it covers SSN, EIN, ITIN, names, emails,
+        phone numbers, addresses, bank accounts, routing numbers, etc.
+
+        If ANY redactable PII is found, the API call is BLOCKED.
 
         Raises:
-            ValueError: If potential PII is detected in the text.
+            PIILeakError: If any redactable PII entity is detected.
         """
         import re
 
-        # Check for SSN patterns (XXX-XX-XXXX) that aren't tokenized
-        ssn_pattern = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
-        ssn_matches = ssn_pattern.findall(text)
-        if ssn_matches:
-            raise ValueError(
-                f"SAFETY CHECK FAILED: Found {len(ssn_matches)} potential SSN(s) in text "
-                f"that were not redacted. Aborting to prevent PII leakage."
+        # Lazy import to avoid circular dependency
+        from ciphertax.detection.detector import PIIDetector
+
+        # Strip CipherTax tokens before re-detection — they contain words like
+        # "PERSON" and "ORGANIZATION" that would trigger false-positive NER hits.
+        # Replace tokens with neutral placeholders that don't trip detection.
+        token_pattern = re.compile(r"\[(?:CT_[a-zA-Z0-9]+_)?[A-Z_]+_\d+\]")
+        clean_text = token_pattern.sub("X", text)
+
+        # Run full detection on the cleaned text
+        detector = PIIDetector()
+        entities = detector.detect(clean_text)
+        leaked = [e for e in entities if e.should_redact]
+
+        if leaked:
+            # DO NOT log the leaked text itself — it contains the PII
+            entity_summary = {}
+            for entity in leaked:
+                entity_summary[entity.entity_type] = entity_summary.get(entity.entity_type, 0) + 1
+
+            error_msg = (
+                f"SAFETY CHECK FAILED: Found {len(leaked)} un-redacted PII entities "
+                f"in text about to be sent to AI. "
+                f"Breakdown: {entity_summary}. "
+                f"API call BLOCKED to prevent PII leakage. "
+                f"This is a bug — please report to "
+                f"https://github.com/z26zheng/CipherTax/issues"
             )
+            logger.error(error_msg)
+            raise PIILeakError(error_msg)
 
-        # Check for 9-digit numbers that could be SSNs (without dashes)
-        ssn_nodash = re.compile(r"\b\d{9}\b")
-        # Only flag if surrounded by SSN context words
-        for match in ssn_nodash.finditer(text):
-            start = max(0, match.start() - 50)
-            context = text[start : match.end() + 50].lower()
-            if any(w in context for w in ["ssn", "social security", "social sec"]):
-                raise ValueError(
-                    "SAFETY CHECK FAILED: Found potential SSN in text. "
-                    "Aborting to prevent PII leakage."
-                )
-
-        logger.debug("Safety check passed — no obvious PII detected")
+        logger.debug("Safety check passed — no PII detected in redacted text")

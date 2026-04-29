@@ -114,11 +114,22 @@ def preserved_values():
 
 @pytest.fixture
 def pipeline(tmp_path):
-    """Create a CipherTaxPipeline with temp vault directory."""
+    """Create a CipherTaxPipeline (in-memory only, no disk vault)."""
+    from ciphertax.pipeline import CipherTaxPipeline
+    return CipherTaxPipeline(
+        vault_dir=tmp_path / "vaults",
+        persist_vault=False,
+    )
+
+
+@pytest.fixture
+def pipeline_with_vault(tmp_path):
+    """Create a CipherTaxPipeline with persistent disk vault for testing."""
     from ciphertax.pipeline import CipherTaxPipeline
     return CipherTaxPipeline(
         vault_password="test-password",
         vault_dir=tmp_path / "vaults",
+        persist_vault=True,
     )
 
 
@@ -127,9 +138,11 @@ def mock_claude_response():
     """Create a mock Claude API response."""
     mock_response = MagicMock()
     mock_response.content = [MagicMock()]
+    # Use a generic response that doesn't reference specific tokens
+    # (tokens now have random session prefixes)
     mock_response.content[0].text = (
-        '{"form_type": "W-2", "employee": {"name": "[PERSON_1]", "ssn": "[SSN_1]"}, '
-        '"wages": 92450.00, "federal_tax_withheld": 16200.00, "state": "IL"}'
+        '{"form_type": "W-2", "wages": 92450.00, '
+        '"federal_tax_withheld": 16200.00, "state": "IL"}'
     )
     mock_response.usage = MagicMock()
     mock_response.usage.input_tokens = 500
