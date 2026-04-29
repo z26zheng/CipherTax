@@ -1,0 +1,45 @@
+# CipherTax Redacted Output — W-2
+# All PII has been replaced with tokens. Financial amounts preserved.
+# PII entities found: 22
+# PII entities redacted: 22
+# Entity types: PERSON, ORGANIZATION, EIN, US_SSN, EMAIL_ADDRESS, PHONE_NUMBER, LOCATION, DATE_TIME
+
+## Token Mapping (stored in encrypted vault):
+  [ADDRESS_1] ← Empl***
+  [DATE_1] ← ***
+  [EIN_1] ← 45-6***
+  [EMAIL_1] ← mari***
+  [ORGANIZATION_1] ← Medi***
+  [ORGANIZATION_2] ← Spri***
+  [ORGANIZATION_3] ← Ever***
+  [ORGANIZATION_4] ← Chic***
+  [ORGANIZATION_5] ← Corp***
+  [ORGANIZATION_6] ← Empl***
+  [ORGANIZATION_7] ← Acme***
+  [ORGANIZATION_8] ← ***
+  [PERSON_1] ← Mari***
+  [PHONE_1] ← (555***
+  [SSN_1] ← 234-***
+
+## Redacted Text (this is what goes to AI):
+
+--- Page 1 ---
+··  ALL DATA IN THIS DOCUMENT IS FAKE · FOR DEMONSTRATION ONLY  ··
+Form W-2  Wage and Tax Statement  [DATE_1]
+a  [ADDRESS_1]'s social security number: [SSN_1]
+b  [ORGANIZATION_6] identification number ([ORGANIZATION_8]): [EIN_1]
+c  [ORGANIZATION_6]'s name: [ORGANIZATION_7]
+   [ORGANIZATION_6]'s address: 100 [ORGANIZATION_5], [ORGANIZATION_4]
+e  [ADDRESS_1]'s name: [PERSON_1]
+   [ADDRESS_1]'s email: [EMAIL_1]
+   [ADDRESS_1]'s phone: [PHONE_1]
+f  [ADDRESS_1]'s address: 742 [ORGANIZATION_3], [ORGANIZATION_2]
+1  Wages, tips, other compensation:    $92,450.00
+2  Federal income tax withheld:         $16,200.00
+3  Social security wages:               $92,450.00
+4  Social security tax withheld:        $5,731.90
+5  [ORGANIZATION_1] wages and tips:             $92,450.00
+6  [ORGANIZATION_1] tax withheld:               $1,340.53
+15 State: IL
+16 State wages:                         $92,450.00
+17 State income tax:                    $5,100.00

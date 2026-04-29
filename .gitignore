@@ -27,6 +27,11 @@ env/
 *.enc
 .ciphertax/
 
+# Large generated files (regenerate with generate_samples.py)
+examples/sample_documents/w2_scanned.pdf
+tests/fixtures/mock_*
+tests/fixtures/_temp_*
+
 # OS
 .DS_Store
 Thumbs.db
@@ -39,5 +44,3 @@ htmlcov/
 # Tesseract / OCR temp files
 *.tiff
 *.tif
-tests/fixtures/mock_*
-tests/fixtures/_temp_*

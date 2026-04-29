@@ -1,0 +1,35 @@
+{
+  "scenario": "Single filer \u2014 W-2 ($92,450) + 1099-INT ($1,245.67) + 1099-NEC ($45,000)",
+  "filing_status": "Single",
+  "tax_year": 2024,
+  "income": {
+    "wages": 92450,
+    "interest": 1245.67,
+    "self_employment": 45000,
+    "capital_gains": 0.0,
+    "gross_income": 138695.66999999998
+  },
+  "deductions": {
+    "adjustments": 3179.14875,
+    "agi": 135516.52125,
+    "deduction_type": "standard",
+    "deduction_amount": 14600,
+    "qbi_deduction": 9000.0,
+    "taxable_income": 111916.52124999999
+  },
+  "tax": {
+    "ordinary_tax": 19902.47,
+    "self_employment_tax": 6358.3,
+    "total_tax": 26260.77
+  },
+  "payments": {
+    "withholding": 16200.0,
+    "estimated_payments": 0.0
+  },
+  "result": {
+    "refund": 0.0,
+    "amount_owed": 10060.77,
+    "effective_rate": "18.9%",
+    "marginal_rate": "24%"
+  }
+}

@@ -1,0 +1,13 @@
+# ALL DATA IN THIS FILE IS FAKE — FOR DEMONSTRATION ONLY
+
+Source,Form,Description,Amount,Payer/Employer,SSN/EIN,Account
+Employer,W-2,Wages,92450.00,Acme Technology Solutions Inc,45-6789012,
+Employer,W-2,Federal Tax Withheld,16200.00,Acme Technology Solutions Inc,45-6789012,
+Bank,1099-INT,Interest Income,1245.67,First National Bank,56-7890123,78901234567
+Client,1099-NEC,Freelance Income,45000.00,Global Consulting Group LLC,67-8901234,
+Broker,1099-B,Stock Sale (AAPL),7000.00,Vanguard Brokerage,78-9012345,
+Broker,1099-B,Stock Sale (TSLA),-4000.00,Vanguard Brokerage,78-9012345,
+
+"# Taxpayer: Maria Elena Rodriguez, SSN: 234-56-7890"
+"# Address: 742 Evergreen Terrace, Springfield IL 62704"
+"# Email: maria.rodriguez@example.com, Phone: (555) 867-5309"

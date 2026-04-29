@@ -1,0 +1,14 @@
+# CipherTax Redacted Output — 1099-INT
+
+## Redacted Text:
+
+--- Page 1 ---
+··  ALL DATA IN THIS DOCUMENT IS FAKE · FOR DEMONSTRATION ONLY  ··
+Form 1099-INT  Interest Income  [DATE_3]
+PAYER'S name: [ORGANIZATION_4] address: 200 [ADDRESS_4], [ADDRESS_2] CA 94104
+PAYER'S [ORGANIZATION_3] ([ORGANIZATION_2]): [EIN_1]
+[ADDRESS_1]'S name: [PERSON_1] address: 456 [ADDRESS_3], [ADDRESS_2] [DATE_2]
+[ADDRESS_1]'S TIN ([ORGANIZATION_1]): [SSN_1]
+Account number: [DATE_1]
+1  Interest income:                     $1,245.67
+4  Federal income tax withheld:          $0.00
