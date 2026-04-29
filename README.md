@@ -7,6 +7,8 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![Tests](https://img.shields.io/badge/tests-152%20passing-brightgreen.svg)](#tests)
 
+📦 **Install:** `pip install ciphertax` — [View on PyPI](https://pypi.org/project/ciphertax/0.1.0/)
+
 ---
 
 ## The Problem: AI + Tax Documents = Privacy Risk
