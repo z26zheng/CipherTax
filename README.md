@@ -2,6 +2,7 @@
 
 **Safely use AI for tax filing — your personal data never leaves your machine.**
 
+[![PyPI](https://img.shields.io/pypi/v/ciphertax.svg)](https://pypi.org/project/ciphertax/)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![Tests](https://img.shields.io/badge/tests-152%20passing-brightgreen.svg)](#tests)
@@ -397,7 +398,14 @@ sudo apt-get install tesseract-ocr
 # Windows — download from https://github.com/UB-Mannheim/tesseract/wiki
 ```
 
-### Install
+### Install from PyPI
+
+```bash
+pip install ciphertax
+python -m spacy download en_core_web_sm
+```
+
+### Or install from source (for development)
 
 ```bash
 git clone https://github.com/z26zheng/CipherTax.git
