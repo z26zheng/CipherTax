@@ -158,6 +158,89 @@ We believe in transparency about limitations:
 
 ---
 
+## Tax Data Sensitivity Levels (DSL)
+
+CipherTax classifies every piece of tax data by sensitivity level, adapted from enterprise data security frameworks. This classification **drives all redaction decisions** — it's not guesswork, it's a formal policy.
+
+| DSL | Level | Description | CipherTax Action | Risk if Exposed |
+|-----|-------|-------------|------------------|-----------------|
+| **1** | 🟢 **PUBLIC** | Data with no privacy risk | ✅ Send to AI as-is | None |
+| **2** | 🔵 **INTERNAL** | De-identified financial data | ✅ Send to AI as-is | Low — no identity context |
+| **3** | 🟡 **CONFIDENTIAL** | Personal identifiers | 🔒 Redact → token | Identity correlation |
+| **4** | 🔴 **RESTRICTED** | Government IDs, bank accounts | 🔐 Redact + AES encrypt | Identity theft, financial fraud |
+| **5** | ⛔ **CRITICAL** | Filing credentials, legal authority | ⛔ Never store or transmit | Catastrophic — full account takeover |
+
+### DSL 1 — PUBLIC (Safe to share)
+
+| Data | Examples | IRS Form Fields |
+|------|----------|-----------------|
+| Tax year | 2024 | 1040 header |
+| Form type | W-2, 1099-INT, Schedule C | All form headers |
+| Filing status | Single, MFJ, HoH | 1040 lines 1-5 |
+| Number of dependents | 2, 0 | 1040 line 6d |
+
+### DSL 2 — INTERNAL (Financial data — safe for AI)
+
+| Data | Examples | Why AI Needs It |
+|------|----------|-----------------|
+| Income amounts | $75,000, $1,245.67 | Tax bracket calculation |
+| Tax withheld | $12,000, $5,100 | Refund/owed computation |
+| Deduction amounts | $14,000 mortgage interest | Itemized vs standard comparison |
+| State abbreviation | CA, IL, TX | State tax determination |
+| Business expenses | Advertising: $5,000 | Schedule C calculation |
+
+**Key insight:** These amounts are NOT personally identifying without the identity data from DSL 3-4. The number "$75,000" doesn't tell you *who* earned it.
+
+### DSL 3 — CONFIDENTIAL (Personal identifiers — REDACT)
+
+| Data | Examples | Redaction | Risk |
+|------|----------|-----------|------|
+| Person name | John Smith, Maria Rodriguez | → `[PERSON_1]` | Identity correlation |
+| Email address | john@example.com | → `[EMAIL_1]` | Phishing, spam |
+| Phone number | (555) 123-4567 | → `[PHONE_1]` | Social engineering, SIM swap |
+| Street address | 742 Evergreen Terrace | → `[ADDRESS_1]` | Physical location exposure |
+| Date of birth | 03/15/1985 | → `[DATE_1]` | Identity verification factor |
+| Employer name | Acme Corp, Google LLC | → `[ORGANIZATION_1]` | Employment verification |
+
+### DSL 4 — RESTRICTED (Government IDs & bank info — REDACT + ENCRYPT)
+
+| Data | Examples | Redaction | Risk |
+|------|----------|-----------|------|
+| **SSN** | 123-45-6789 | → `[SSN_1]` + AES vault | **Identity theft, fraudulent tax filing, credit fraud** |
+| **EIN** | 12-3456789 | → `[EIN_1]` + AES vault | Business identity fraud |
+| **ITIN** | 912-34-5678 | → `[ITIN_1]` + AES vault | Tax identity theft |
+| **Bank account** | 1234567890 | → `[BANK_ACCT_1]` + AES vault | Unauthorized bank transactions |
+| **Routing number** | 021000021 | → `[ROUTING_1]` + AES vault | ACH fraud |
+| **W-2 control number** | A1B2C3D4E5 | → `[CONTROL_NUM_1]` + AES vault | W-2 forgery |
+
+These are stored **only** in the locally encrypted vault (Fernet/AES-128-CBC + HMAC-SHA256, PBKDF2 with 600,000 iterations). The vault file is overwritten with random data before deletion.
+
+### DSL 5 — CRITICAL (Never store or transmit)
+
+| Data | Risk | CipherTax Policy |
+|------|------|-------------------|
+| **IRS e-File PIN / IP PIN** | Enables fraudulent tax return filing | ⛔ Never stored — user warned if detected |
+| **Tax portal credentials** | Full account takeover | ⛔ Never stored — not processed |
+| **Power of Attorney (Form 2848)** | Legal authority over tax matters | ⛔ Never stored — flagged for manual review |
+
+> **If CipherTax detects DSL 5 data in your documents, it will warn you and refuse to process it.** These credentials should be entered directly into IRS systems, never shared with any third party including AI.
+
+### How DSL Drives Redaction
+
+```python
+from ciphertax.tax.data_sensitivity import get_fields_safe_for_ai, get_fields_to_redact
+
+# What's safe to send to Claude?
+for field in get_fields_safe_for_ai():
+    print(f"✅ {field.field_name} (DSL {field.dsl})")
+
+# What must be redacted?
+for field in get_fields_to_redact():
+    print(f"🔒 {field.field_name} (DSL {field.dsl}) → {field.ai_action}")
+```
+
+---
+
 ## Tax Calculation Engine
 
 CipherTax includes a **complete federal tax calculator** for tax year 2024 that follows the IRS Form 1040 flow:
